@@ -1,0 +1,971 @@
+---
+title: "Comparateur des territoires"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,dev='svg',warning = FALSE, fig.align ="center",message=FALSE)
+```
+
+
+```{r library, include = FALSE, echo=FALSE,warning=FALSE}
+library(pacman)
+pacman::p_load("data.table","pROC","shiny")
+pacman::p_load("ggplot2")
+pacman::p_load("dplyr")
+pacman::p_load("reshape")
+pacman::p_load("ggmosaic") 
+pacman::p_load("sunburstR")
+pacman::p_load("htmltools")
+pacman::p_load("d3r")
+pacman::p_load("ggbreak")
+pacman::p_load("patchwork")
+pacman::p_load("ggforce")
+pacman::p_load("factoextra")
+pacman::p_load("rgdal")
+pacman::p_load("leaflet")
+pacman::p_load("ggmap") 
+pacman::p_load("formattable")
+pacman::p_load("plotly")
+pacman::p_load("tidyverse")
+pacman::p_load("webshot","plotly","rpart","rpart.plot","rattle","rmarkdown","knitr","kableExtra","RColorBrewer")
+webshot::install_phantomjs()
+```
+
+```{r data,include=FALSE}
+BDD=read.csv("BDD.csv",header=TRUE, sep=";" , dec=",")
+```
+
+```{r préliminaires, include=FALSE}
+Pop_2013_by_DEP=aggregate(BDD[, 6], list(BDD$DEP), sum)[2:101,]
+Pop_2019_by_DEP=aggregate(BDD[, 5], list(BDD$DEP), sum)[2:101,]
+names(Pop_2013_by_DEP)<-c("Group.1","2013")
+names(Pop_2019_by_DEP)<-c("Group.1","2019")
+
+
+Melted_Pop_2013 =melt(data = Pop_2013_by_DEP, id="Group.1")
+names(Melted_Pop_2013)<-c("Departement","Année","Population")
+
+Melted_Pop_2019 =melt(data = Pop_2019_by_DEP, id="Group.1")
+names(Melted_Pop_2019)<-c("Departement","Année","Population")
+
+Pop_by_Dep = data.table(merge(Melted_Pop_2013,Melted_Pop_2019, by=c("Departement","Année","Population"), all.x = TRUE, all.y = TRUE))
+
+Pop_Ile_de_France = Pop_by_Dep[ Departement %in% c(75,77,78,91,92,93,94,95) ]
+
+dt=data.table(BDD)
+
+dt = dt[!(dt$REG %in% c("01","02","03","04","06"))]
+
+dt$Gd_region=""
+dt[(dt$REG) == 32,]$Gd_region = "Hauts-de-France"
+dt[(dt$REG) == 11,]$Gd_region = "IDF"
+dt[(dt$REG) == 28,]$Gd_region = "Normandie"
+dt[(dt$REG) == 53,]$Gd_region = "Bretagne"
+dt[(dt$REG) == 52,]$Gd_region = "Pays de la Loire"
+dt[(dt$REG) == 24,]$Gd_region = "Centre Val de Loire"
+dt[(dt$REG) == 44,]$Gd_region = "Grand Est"
+dt[(dt$REG) == 27,]$Gd_region = "Bourgogne Franche Comté"
+dt[(dt$REG) == 75,]$Gd_region = "Nouvelle Aquitaine"
+dt[(dt$REG) == 84,]$Gd_region = "Auvergne-Rhône-Alpes"
+dt[(dt$REG) == 76,]$Gd_region = "Occitanie"
+dt[(dt$REG) == 93,]$Gd_region = "PACA"
+dt[(dt$REG) == 94,]$Gd_region = "Corse"
+
+i=which(dt$MED19!='s'& dt$MED19!="")
+df=dt[i,]
+df$MED19=as.numeric(df$MED19)
+
+Pop_2013_by_REG=aggregate(dt[, 6], list(dt$REG), sum)[2:18,]
+Pop_2019_by_REG=aggregate(dt[, 5], list(dt$REG), sum)[2:18,]
+
+MED_2019_by_REG=aggregate(df[,20], list(df$REG), mean)[2:18,]
+MED_2019_by_REG <- na.omit(MED_2019_by_REG)
+names(MED_2019_by_REG)<-c("Group.1","nivMoy")
+
+
+MED_2019_by_dep=aggregate(df[,20], list(df$DEP), mean)[2:101,]
+MED_2019_by_dep <- na.omit(MED_2019_by_dep)
+names(MED_2019_by_dep)<-c("Group.1","nivMoy")
+
+names(Pop_2013_by_REG)<-c("Group.1","2013")
+names(Pop_2019_by_REG)<-c("Group.1","2019")
+
+Melted_Pop_2013_REG =melt(data = Pop_2013_by_REG, id="Group.1")
+names(Melted_Pop_2013_REG)<-c("Région","Année","Population")
+
+Melted_Pop_2019_REG =melt(data = Pop_2019_by_REG, id="Group.1")
+names(Melted_Pop_2019_REG)<-c("Région","Année","Population")
+
+Pop_by_REG = data.table(merge(Melted_Pop_2013_REG,Melted_Pop_2019_REG, by=c("Région","Année","Population"), all.x = TRUE, all.y = TRUE))
+
+Taux_Chomage_France= 8.7/100
+Niveau_Vie_Median_France= 22040
+
+df$Seuil_Chomage=""
+df[(df$P19_CHOMEUR1564/df$P19_POP1564)>=Taux_Chomage_France]$Seuil_Chomage="Supérieur"
+df[(df$P19_CHOMEUR1564/df$P19_POP1564)<Taux_Chomage_France]$Seuil_Chomage="Inférieur"
+
+df$Seuil_Niveau_vie=""
+df[(df$MED19)>=Niveau_Vie_Median_France]$Seuil_Niveau_vie="Supérieur"
+df[(df$MED19)<Niveau_Vie_Median_France]$Seuil_Niveau_vie="Inférieur"
+
+```
+
+
+
+```{r waterfall,include=FALSE}
+num_region=c(32,11,28,53,52,24,44,27,75,84,76,94,93)
+nom_region=c("Hauts-de-France","IDF","Normandie","Bretagne","Pays de la Loire","Centre Val de Loire","Grand Est","Bourgogne Franche Comté","Nouvelle Aquitaine","Auvergne Rhône Alpes","Occitanie","PACA","Corse")
+j=1
+waterfall=list()
+
+
+Var_pop_by_REG=c(aggregate(dt[, 6], list(dt$REG), sum)[2:18,], aggregate(dt[, 8], list(dt$REG), sum)[2:18,],aggregate(dt[, 9], list(dt$REG), sum)[2:18,],aggregate(dt[, 5], list(dt$REG), sum)[2:18,] )
+Var_pop_by_REG = as.data.frame(Var_pop_by_REG)
+Var_pop_by_REG = Var_pop_by_REG[-c(3,5,7)]
+names(Var_pop_by_REG)<-c("Région","Population en 2013", "Naissance entre 2013 et 2019", "Décès entre 2013 et 2019", "Population en 2019")
+Var_pop_by_REG$Inexpliqué = Var_pop_by_REG$`Population en 2019`- Var_pop_by_REG$`Naissance entre 2013 et 2019` - Var_pop_by_REG$`Population en 2013` + Var_pop_by_REG$`Décès entre 2013 et 2019`
+
+for (i in num_region)
+{
+   Var_pop_by_Reg_i= filter(Var_pop_by_REG, Région==i)
+   x=list("Population en 2013", "Naissance entre 2013 et 2019", "Décès entre 2013 et 2019", "Inexpliqué", "Population en 2019")
+  measure= c("relative", "relative", "relative", "relative", "total")
+  y = c(Var_pop_by_Reg_i[[2]], Var_pop_by_Reg_i[[3]], -Var_pop_by_Reg_i[[4]], Var_pop_by_Reg_i[[6]], Var_pop_by_Reg_i[[5]])
+  #text= c(paste0("+",y[1]), paste0("+",y[2]), y[3], paste0("+",y[4]), "Total")
+  text=c("","","","","Total")
+
+data = data.frame(x=factor(x,levels=x),measure,y)
+
+fig <- plot_ly(
+  data, name="", type = "waterfall", measure = ~measure,
+  x = ~x, textposition = "outside", y= ~y, text =~text,
+  connector = list(line = list(color= "rgb(0)"))) 
+fig <- fig %>%
+  layout(title = paste0("Evolution de la population entre 2013 et 2019 dans la région ",nom_region[j]),
+        yaxis = list(title = "Population en millions"),
+        xaxis = list(title = ""),
+        autosize = TRUE,
+        showlegend = FALSE)
+
+  waterfall[[j]]=fig
+
+  i=i+1
+  j=j+1
+
+}
+
+liste_de_graphiques <- list(
+  `Hauts-de-France` = waterfall[[1]],
+  `Ile-de-France` =waterfall[[2]],
+  Normandie =waterfall[[3]],
+  Bretagne =waterfall[[4]],
+  `Pays de la Loire` =waterfall[[5]],
+  `Centre Val de Loire` =waterfall[[6]],
+  `Grand Est` =waterfall[[7]],
+  `Bourgogne Franche Comté` =waterfall[[8]],
+  `Nouvelle Aquitaine` =waterfall[[9]],
+  `Auvergne Rhône Alpes` =waterfall[[10]],
+  Occitanie =waterfall[[11]],
+  PACA =waterfall[[12]],
+  Corse =waterfall[[13]]
+)
+
+liste_de_texte <- list(
+  `Hauts-de-France` = "La population a légèrement augmenté pour la région Hauts de France. Cette croissance est le résultat d'un nombre de naissances supérieur à celui des décès. Par ailleurs, la part de variation inexpliquée est négative. 
+
+\n NB : La part inexpliquée peut correspondre aux déménagements, aux expatriations, aux immigrations…",
+  `Ile-de-France` ="La population a augmenté pour la région Ile de France. Cette croissance est le résultat d'un nombre de naissances supérieur à celui des décès. Par ailleurs, la part de variation inexpliquée est négative. 
+
+\n NB : La part inexpliquée peut correspondre aux déménagements, aux expatriations, aux immigrations…
+",
+  Normandie ="La population est globalement restée stable pour la région Normandie. Cette stabilité est le résultat d'un nombre de naissances et de décès presque équivalent. Par ailleurs, la part de variation inexpliquée est négative. 
+
+\n NB : La part inexpliquée peut correspondre aux déménagements, aux expatriations, aux immigrations…
+",
+  Bretagne ="La population a légèrement pour la région Bretagne. Cette croissance est le résultat d'un nombre de naissances supérieur à celui des décès. Par ailleurs, la part de variation inexpliquée est positive. 
+
+\n NB : La part inexpliquée peut correspondre aux déménagements, aux expatriations, aux immigrations…
+",
+  `Pays de la Loire` ="La population a légèrement augmenté pour la région Pays de la Loire. Cette croissance est le résultat d'un nombre de naissances supérieur à celui des décès. Par ailleurs, la part de variation inexpliquée est positive. 
+
+\n NB : La part inexpliquée peut correspondre aux déménagements, aux expatriations, aux immigrations…
+",
+  `Centre Val de Loire` ="La population est restée stable pour la région Centre Val de Loire. Cette stabilité est le résultat d'un nombre de naissances et de décès presque équivalent. Par ailleurs, la part de variation inexpliquée est négative. 
+
+\n NB : La part inexpliquée peut correspondre aux déménagements, aux expatriations, aux immigrations…
+",
+  `Grand Est` ="La population est globalement pour la région Grand Est. Cette croissance est le résultat d'un nombre de naissances et de décès presque équivalent. Par ailleurs, la part de variation inexpliquée est négative. 
+
+\n NB : La part inexpliquée peut correspondre aux déménagements, aux expatriations, aux immigrations…
+",
+  `Bourgogne Franche Comté` ="La population a très légèrement baissé pour la région Bourgogne Franche - Comté. Cette décroissance est le résultat d'un nombre de naissances inférieur à celui des décès. Par ailleurs, la part de variation inexpliquée est négative. 
+
+\n NB : La part inexpliquée peut correspondre aux déménagements, aux expatriations, aux immigrations…
+",
+  `Nouvelle Aquitaine` ="La population a augmenté pour la région Nouvelle Aquitaine. Cette croissance est le résultat d'un nombre de naissances supérieur à celui des décès. Par ailleurs, la part de variation inexpliquée est positive. 
+
+\n NB : La part inexpliquée peut correspondre aux déménagements, aux expatriations, aux immigrations…
+",
+  `Auvergne Rhône Alpes` ="La population a augmenté pour la région Auvergne Rhône Alpes. Cette croissance est le résultat d'un nombre de naissances supérieur à celui des décès. Par ailleurs, la part de variation inexpliquée est positive. 
+
+\n NB : La part inexpliquée peut correspondre aux déménagements, aux expatriations, aux immigrations…
+",
+  Occitanie ="La population a augmenté pour la région Occitanie. Cette croissance est le résultat d'un nombre de naissances supérieur à celui des décès. Par ailleurs, la part de variation inexpliquée est positive. 
+
+\n NB : La part inexpliquée peut correspondre aux déménagements, aux expatriations, aux immigrations…
+",
+  PACA ="La population a augmenté pour la région PACA. Cette croissance est le résultat d'un nombre de naissances supérieur à celui des décès. Par ailleurs, la part de variation inexpliquée est largement positive. 
+
+\n NB : La part inexpliquée peut correspondre aux déménagements, aux expatriations, aux immigrations…"
+,
+  Corse ="La population a augmenté pour la région Corse. Cette croissance est le résultat d'un nombre de naissances supérieur à celui des décès. Par ailleurs, la part de variation inexpliquée est positive. 
+
+\n NB : La part inexpliquée peut correspondre aux déménagements, aux expatriations, aux immigrations…
+"
+)
+
+```
+
+
+
+
+```{r niveau vie moyen,include=FALSE}
+cp_reg_fr=readOGR(dsn="REGION.shp",
+            layer= "REGION", verbose = FALSE)
+
+cp_reg = cp_reg_fr[!(cp_reg_fr$INSEE_REG %in% c("01","02","03","04","06")),]
+
+cp_reg_data = cp_reg@data
+
+cp_reg_data = cp_reg_data[!(cp_reg_data$INSEE_REG %in% c("01","02","03","04","06")),]
+
+
+cp_reg_data$INSEE_REG = as.numeric(cp_reg_data$INSEE_REG)
+
+MED_2019_by_REG_moy= MED_2019_by_REG %>%
+  left_join(. , cp_reg_data, by=c("Group.1"="INSEE_REG"))
+
+cp_reg_data= cp_reg_data %>%
+  left_join(. ,MED_2019_by_REG_moy , by=c("INSEE_REG"="Group.1"))
+
+cp_reg@data<-setDT(cp_reg_data)
+
+label_reg <- sprintf(
+  "<strong>%s</strong><br/>%g",
+   cp_reg@data$NOM_M.x, cp_reg@data$nivMoy
+) %>% lapply(htmltools::HTML)
+
+
+mycols <- colors()[c(30,400,630)]
+                   
+pal2 <- colorBin(mycols,cp_reg@data$nivMoy, bins=4)
+
+niv_moyen_rég=leaflet(data =spTransform(cp_reg, CRS("+proj=longlat +datum=WGS84"))) %>%
+  addTiles()%>%
+  addPolygons( 
+   fillColor = ~pal2(cp_reg@data$nivMoy),
+  weight = 1,
+   opacity = 1,
+  color = "white",
+  
+  fillOpacity = 0.7,
+  stroke = TRUE, label = label_reg)%>%
+  addLegend(values = ~cp_reg@data$nivMoy, pal=pal2, title = "Niveau de vie moyen par région")
+```
+
+
+```{r carte régions,include=FALSE}
+num_region=c(32,11,28,53,52,24,44,27,75,84,76,94,93)
+nom_region=c("Hauts-de-France","IDF","Normandie","Bretagne","Pays de la Loire","Centre Val de Loire","Grand Est","Bourgogne Franche Comté","Nouvelle Aquitaine","Auvergne Rhône Alpes","Occitanie","PACA","Corse")
+l=1
+id=c(0,0,0,0,0,0,0,0,0,0,0,0,0)
+carte_region=list()
+
+for (k in 1:length(num_region))
+{
+  id[[k]]=1
+   AUV=data.frame(Group.1=num_region,id=id)
+
+  cp_reg_fr=readOGR(dsn="REGION.shp",
+            layer= "REGION", verbose = FALSE)
+
+  cp_reg = cp_reg_fr[!(cp_reg_fr$INSEE_REG %in% c("01","02","03","04","06")),]
+  cp_reg_data = cp_reg@data
+  cp_reg_data = cp_reg_data[!(cp_reg_data$INSEE_REG %in% c("01","02","03","04","06")),]
+  cp_reg_data$INSEE_REG = as.numeric(cp_reg_data$INSEE_REG)
+REG_moy= AUV %>%
+  left_join(. , cp_reg_data, by=c("Group.1"="INSEE_REG"))
+
+cp_reg_data= cp_reg_data %>%
+  left_join(. ,REG_moy , by=c("INSEE_REG"="Group.1"))
+
+cp_reg@data<-setDT(cp_reg_data)
+
+label_reg <- sprintf(
+  "<strong>%s</strong><br/>%g",
+   cp_reg@data$NOM_M.x, cp_reg@data$id
+) %>% lapply(htmltools::HTML)
+
+
+mycols <- c("white", "red")
+                   
+pal2 <- colorBin(mycols,cp_reg@data$id, bins= 3)
+
+fig=leaflet(data =spTransform(cp_reg, CRS("+proj=longlat +datum=WGS84"))) %>%
+  addTiles()%>%
+  addPolygons( 
+   fillColor = ~pal2(cp_reg@data$id),
+  weight = 1,
+   opacity = 1,
+  color = "white",
+  
+  fillOpacity = 0.7,
+  stroke = TRUE, label = label_reg)
+
+  carte_region[[l]]=fig
+  
+  id[[k]]=0
+
+  k=k+1
+  l=l+1
+}
+
+liste_de_regions <- list(
+  `Hauts-de-France` = carte_region[[1]],
+  `Ile-de-France` =carte_region[[2]],
+  Normandie =carte_region[[3]],
+  Bretagne =carte_region[[4]],
+  `Pays de la Loire` =carte_region[[5]],
+  `Centre Val de Loire` =carte_region[[6]],
+  `Grand Est` =carte_region[[7]],
+  `Bourgogne Franche Comté` =carte_region[[8]],
+  `Nouvelle Aquitaine` =carte_region[[9]],
+  `Auvergne Rhône Alpes` =carte_region[[10]],
+  Occitanie =carte_region[[11]],
+  Corse =carte_region[[12]],
+  PACA =carte_region[[13]]
+)
+
+```
+
+
+
+```{r evol emploi, include=FALSE}
+Nb_Chomeur_2019<-sum(dt$P19_CHOMEUR1564,na.rm = TRUE)
+
+Nb_ACT_2019<-sum(dt$P19_ACT1564,na.rm = TRUE)
+
+cat<-c("Personnes actives","Personnes  au chômage")
+pourcentages<-c(Nb_ACT_2019/(Nb_ACT_2019+Nb_Chomeur_2019),Nb_Chomeur_2019/(Nb_ACT_2019+Nb_Chomeur_2019))
+colors<-c("orchid","salmon")
+
+
+
+graphique1 <- plot_ly(labels = cat, values = pourcentages, type = "pie", textinfo = "percent",
+                marker = list(colors =colors))
+
+
+
+P13_EMPLT_classement_reg <- dt[,c("P13_EMPLT","P19_EMPLT","Gd_region")]
+P13_EMPLT_classement_reg = P13_EMPLT_classement_reg[,.(Emplt_2013=sum(P13_EMPLT),Emplt_2019=sum(P19_EMPLT)), by=Gd_region]
+
+P13_EMPLT_classement_reg <- P13_EMPLT_classement_reg[order(Emplt_2013,decreasing = TRUE),]
+P13_EMPLT_classement_reg <- na.omit(P13_EMPLT_classement_reg)
+P13_EMPLT_classement_reg$Gd_region=gsub("_"," ",P13_EMPLT_classement_reg$Gd_region)
+
+g_classement_nbemploi_by_REG_by_annee <- plot_ly(P13_EMPLT_classement_reg,x=~Gd_region,y=~Emplt_2013,type='bar',xaxis=list(xcategory='array'),yaxis=list(title='Nombre emplois'),name='2013',marker=list(color='orchid')) %>% add_bars(y=~Emplt_2019,name='2019',marker=list(color='salmon'))%>%layout(title="Nombre d'emplois par région et par année",xaxis = list(title='',categoryorder = "array",categoryarray = ~Gd_region),yaxis=list(title="Nombre d'emplois"),legend = list(orientation = "s",xanchor = "center",x = 0.5,y=-0.2, bgcolor = 'rgba(0,0,0,0)'))
+
+g_classement_nbemploi_by_REG_by_annee  <- g_classement_nbemploi_by_REG_by_annee  %>% layout(legend = list(x = 100, y = 0.5))
+
+```
+
+
+```{r variation population,warning=FALSE, message=FALSE, echo=FALSE}
+# fusion des base pop_2013_by_dep et pop_2019_by_dep afin de calculer la variation de la démographie 
+POP_2013_2019_by_dep= Pop_2013_by_DEP %>%
+  left_join(. , Pop_2019_by_DEP, by=c("Group.1"="Group.1"))
+
+#On créer l'indicateur variation exprimé en pourcentage
+POP_2013_2019_by_dep$variation = ((POP_2013_2019_by_dep$`2019`-POP_2013_2019_by_dep$`2013`)/POP_2013_2019_by_dep$`2013`)*100
+
+# on télécharge les données géospatiales 
+
+cp=readOGR(dsn="DEPARTEMENT.shp",
+            layer= "DEPARTEMENT", verbose = FALSE)
+
+cp_metropole = cp[!(cp$INSEE_DEP %in% c("971","972","973","974","975","976","977")),]
+
+data_cp_metropole = cp_metropole@data
+
+data_cp_metropole = subset(data_cp_metropole, select= -c(ID, NOM, INSEE_REG))
+
+POP_2013_2019_by_dep= POP_2013_2019_by_dep %>%
+  left_join(. , data_cp_metropole, by=c("Group.1"="INSEE_DEP"))
+
+mycols <- colors()[c(30,28,130,590,601,378, 142,621,630)] 
+
+data_cp_metropole= data_cp_metropole %>%
+  left_join(. ,POP_2013_2019_by_dep , by=c("INSEE_DEP"="Group.1"))
+
+data_cp_metropole$NOM_NUM = paste(data_cp_metropole$INSEE_DEP,data_cp_metropole$NOM_M.x,sep=" : ")
+
+cp_metropole@data<-setDT(data_cp_metropole)
+
+# On crée la palette de couleur qui nous servira pour la carte
+pal <- colorBin(mycols,cp_metropole@data$variation, bins= 9)
+
+labels <- sprintf(
+  "<strong>%s</strong><br/>%g",
+   cp_metropole@data$NOM_NUM, cp_metropole@data$variation
+) %>% lapply(htmltools::HTML)
+
+departement=leaflet(data =spTransform(cp_metropole, CRS("+proj=longlat +datum=WGS84"))) %>%
+  addTiles()%>%
+  addPolygons( 
+    fillColor = ~pal(cp_metropole@data$variation),
+  weight = 1,
+  opacity = 1,
+  color = "white",
+  
+  fillOpacity = 0.7,
+  stroke = TRUE, label =  labels)%>%
+  addLegend(values = ~cp_metropole@data$variation, pal=pal, title = "Variation de population en pourcentage")
+```
+
+
+```{r,include=FALSE}
+cp_reg_fr=readOGR(dsn="REGION.shp",
+            layer= "REGION", verbose = FALSE)
+
+cp_reg = cp_reg_fr[!(cp_reg_fr$INSEE_REG %in% c("01","02","03","04","06")),]
+
+cp_reg_data = cp_reg@data
+
+cp_reg_data = cp_reg_data[!(cp_reg_data$INSEE_REG %in% c("01","02","03","04","06")),]
+
+# fusion des base pop_2013_by_dep et pop_2019_by_dep afin de calculer la variation de la démographie 
+POP_2013_2019_by_reg= Pop_2013_by_REG %>%
+  left_join(. , Pop_2019_by_REG, by=c("Group.1"="Group.1"))
+
+#On crée l'indicateur variation exprimé en pourcentage
+POP_2013_2019_by_reg$variation = ((POP_2013_2019_by_reg$`2019`-POP_2013_2019_by_reg$`2013`)/POP_2013_2019_by_reg$`2013`)*100
+
+cp_reg_data$INSEE_REG = as.numeric(cp_reg_data$INSEE_REG)
+
+POP_2013_2019_by_reg= POP_2013_2019_by_reg %>%
+  left_join(. , cp_reg_data, by=c("Group.1"="INSEE_REG"))
+
+cp_reg_data= cp_reg_data %>%
+  left_join(. ,POP_2013_2019_by_reg , by=c("INSEE_REG"="Group.1"))
+
+cp_reg@data<-setDT(cp_reg_data)
+
+label_reg <- sprintf(
+  "<strong>%s</strong><br/>%g",
+   cp_reg@data$NOM_M.x, cp_reg@data$variation
+) %>% lapply(htmltools::HTML)
+
+mycols <- colors()[c(30,28,130,590,601,378, 142,621,630)]
+                   
+pal2 <- colorBin(mycols,cp_reg@data$variation, bins= 9)
+
+region=leaflet(data =spTransform(cp_reg, CRS("+proj=longlat +datum=WGS84"))) %>%
+  addTiles()%>%
+  addPolygons( 
+   fillColor = ~pal2(cp_reg@data$variation),
+  weight = 1,
+   opacity = 1,
+  color = "white",
+  
+  fillOpacity = 0.7,
+  stroke = TRUE, label = label_reg)%>%
+  addLegend(values = ~cp_reg@data$variation, pal=pal2, title = "Variation de population en pourcentage")
+
+liste_grain <- list(
+  `Départements` =departement,
+  `Régions` =region)
+
+liste_de_texte_grain <- list(
+  `Départements` ="\n \n Cette carte illustre la variation de la population en pourcentage entre 2013 et 2019 par départements, ce qui revêt une importance particulière dans le contexte de notre étude sur les disparités de population en France. 
+
+On peut noter que les départements situés le long des côtes méditerranéennes et atlantiques ont enregistré une augmentation de leur population, en moyenne entre 3% et 7%. Cette évolution peut être associé à une attraction pour les départements côtiers, notamment parmi les jeunes qui sont peut-être attirés par le charme de ces environnements ensoleillés. 
+En contraste, les départements situés au cœur du pays connaissent une diminution de leur population, une tendance qui peut être expliquée par la présence d'une population plus âgée dans ces zones, ce qui les rend plus susceptibles de décéder.
+
+Il est important de souligner que de manière globale, la population totale a augmenté, passant de 66 millions en 2013 à 67,39 millions en 2019.
+",
+  `Régions` ="\n \n Cette carte illustre la variation de la population en pourcentage entre 2013 et 2019 par régions. 
+
+La variation de la population est en augmentation dans toutes les régions, à l'exception de la Normandie et de la Bourgogne-Franche-Comté. Cette augmentation de la population en France dans son ensemble est donc cohérente avec ce résultat.
+
+Il convient de noter que la variation de la population est particulièrement marquée dans les régions côtières, notamment en Occitanie et en Corse. Cette tendance peut s'expliquer par le fait que ces régions sont attractives et abritent une population plus jeune, avec un nombre d'enfants nés entre 2013 et 2019 plus important. 
+")
+
+```
+
+
+```{r,include=FALSE}
+cp_reg_fr2=readOGR(dsn="REGION.shp",
+            layer= "REGION", verbose=FALSE)
+
+
+cp_reg2 = cp_reg_fr2[!(cp_reg_fr2$INSEE_REG %in% c("01","02","03","04","06")),]
+dtsansna=dt[!is.na(dt$P13_EMPLT),]
+Pop_2013_by_REG2=aggregate(dtsansna[, 6], list(dtsansna$REG), sum)[2:18,]
+Pop_2013_by_REG2_emploi = aggregate(dtsansna[, 24], list(dtsansna$REG), sum)[2:18,]
+
+
+Pop_2019_by_REG2=aggregate(dtsansna[, 5], list(dtsansna$REG), sum)[2:18,]
+Pop_2019_by_REG2_emploi = aggregate(dtsansna[, 22], list(dtsansna$REG), sum)[2:18,]
+
+Pop_2013_by_REG2= Pop_2013_by_REG2 %>%
+  left_join(. , Pop_2013_by_REG2_emploi, by=c("Group.1"="Group.1"))
+
+
+Pop_2019_by_REG2= Pop_2019_by_REG2 %>%
+  left_join(. , Pop_2019_by_REG2_emploi, by=c("Group.1"="Group.1"))
+
+
+Pop_2013_2019_by_REG2= Pop_2013_by_REG2 %>%
+  left_join(. , Pop_2019_by_REG2, by=c("Group.1"="Group.1"))
+
+
+Pop_2013_2019_by_REG2 =as.data.table(Pop_2013_2019_by_REG2)
+
+
+
+Pop_2013_2019_by_REG2$indpop=""
+Pop_2013_2019_by_REG2[(P19_POP/P13_POP)>= 1]$indpop <- 1
+Pop_2013_2019_by_REG2[(Pop_2013_2019_by_REG2$P19_POP/Pop_2013_2019_by_REG2$P13_POP) < 1]$indpop = -1
+
+Pop_2013_2019_by_REG2$indemp=""
+Pop_2013_2019_by_REG2[(Pop_2013_2019_by_REG2$P19_EMPLT/Pop_2013_2019_by_REG2$P13_EMPLT) >= 1]$indemp = 1
+Pop_2013_2019_by_REG2[(Pop_2013_2019_by_REG2$P19_EMPLT/Pop_2013_2019_by_REG2$P13_EMPLT) < 1]$indemp = -1
+
+Pop_2013_2019_by_REG2$indpop = as.numeric(Pop_2013_2019_by_REG2$indpop)
+Pop_2013_2019_by_REG2$indemp = as.numeric(Pop_2013_2019_by_REG2$indemp)
+
+
+Pop_2013_2019_by_REG2$indfi=0
+Pop_2013_2019_by_REG2[(Pop_2013_2019_by_REG2$indpop +Pop_2013_2019_by_REG2$indemp )==2]$indfi = 1
+Pop_2013_2019_by_REG2[(Pop_2013_2019_by_REG2$indpop +Pop_2013_2019_by_REG2$indemp )==-2]$indfi = 1
+
+
+
+cp_reg2_data= cp_reg2@data
+cp_reg2_data$INSEE_REG = as.numeric(cp_reg2_data$INSEE_REG)
+
+cp_reg2_data= cp_reg2_data %>%
+  left_join(. ,Pop_2013_2019_by_REG2 , by=c("INSEE_REG"="Group.1"))
+
+cp_reg2@data<-setDT(cp_reg2_data)
+
+
+pal4 <- colorFactor(c("red", "green"), domain = c("0", "1"))
+
+
+ccl1=leaflet(data =spTransform(cp_reg2, CRS("+proj=longlat +datum=WGS84"))) %>%
+  addTiles()%>%
+  addPolygons( 
+   fillColor = ~pal4(cp_reg2@data$indfi),
+  weight = 1,
+   opacity = 1,
+  color = "white",
+  
+  fillOpacity = 0.7,
+  stroke = TRUE)%>%
+  addLegend( colors=c("red", "green"), title = "Similitude variation nombre emplois et population ", labels=c("Sens similaire","Sens opposé"))
+```
+
+```{r,include=FALSE}
+cp_reg2=readOGR(dsn="REGION.shp",
+            layer= "REGION", verbose = FALSE)
+
+inexpliquee= Var_pop_by_REG$Inexpliqué
+num_region =  Var_pop_by_REG$Région
+inexpliquee = as.data.table(inexpliquee)
+num_region= as.data.table(num_region)
+
+inexpliquee2 = cbind(inexpliquee, num_region)
+
+cp_reg2 = cp_reg2[!(cp_reg2$INSEE_REG %in% c("01","02","03","04","06")),]
+
+dtsansna=dt[!is.na(dt$P13_EMPLT),]
+Pop_2013_by_REG2=aggregate(dtsansna[, 6], list(dtsansna$REG), sum)[2:18,]
+Pop_2013_by_REG2_emploi = aggregate(dtsansna[, 24], list(dtsansna$REG), sum)[2:18,]
+
+
+Pop_2019_by_REG2=aggregate(dtsansna[, 5], list(dtsansna$REG), sum)[2:18,]
+Pop_2019_by_REG2_emploi = aggregate(dtsansna[, 22], list(dtsansna$REG), sum)[2:18,]
+
+Pop_2013_by_REG2= Pop_2013_by_REG2 %>%
+  left_join(. , Pop_2013_by_REG2_emploi, by=c("Group.1"="Group.1"))
+
+
+Pop_2019_by_REG2= Pop_2019_by_REG2 %>%
+  left_join(. , Pop_2019_by_REG2_emploi, by=c("Group.1"="Group.1"))
+
+
+Pop_2013_2019_by_REG2= Pop_2013_by_REG2 %>%
+  left_join(. , Pop_2019_by_REG2, by=c("Group.1"="Group.1"))
+
+
+
+Pop_2013_2019_by_REG2 =as.data.table(Pop_2013_2019_by_REG2)
+
+
+Pop_2013_2019_by_REG2$indpop=""
+Pop_2013_2019_by_REG2[(P19_POP/P13_POP)>= 1]$indpop <- 1
+Pop_2013_2019_by_REG2[(Pop_2013_2019_by_REG2$P19_POP/Pop_2013_2019_by_REG2$P13_POP) < 1]$indpop = -1
+
+Pop_2013_2019_by_REG2$indemp=""
+Pop_2013_2019_by_REG2[(Pop_2013_2019_by_REG2$P19_EMPLT/Pop_2013_2019_by_REG2$P13_EMPLT) >= 1]$indemp = 1
+Pop_2013_2019_by_REG2[(Pop_2013_2019_by_REG2$P19_EMPLT/Pop_2013_2019_by_REG2$P13_EMPLT) < 1]$indemp = -1
+
+Pop_2013_2019_by_REG2$indpop = as.numeric(Pop_2013_2019_by_REG2$indpop)
+Pop_2013_2019_by_REG2$indemp = as.numeric(Pop_2013_2019_by_REG2$indemp)
+
+
+Pop_2013_2019_by_REG2$indfi=0
+Pop_2013_2019_by_REG2[(Pop_2013_2019_by_REG2$indpop +Pop_2013_2019_by_REG2$indemp )==2]$indfi = 1
+Pop_2013_2019_by_REG2[(Pop_2013_2019_by_REG2$indpop +Pop_2013_2019_by_REG2$indemp )==-2]$indfi = 1
+
+
+
+Pop_2013_2019_by_REG2_inex2<- Pop_2013_2019_by_REG2 %>%
+  left_join(. ,inexpliquee2 , by=c("Group.1"="num_region"))
+Pop_2013_2019_by_REG2_inex2$indinex=""
+Pop_2013_2019_by_REG2_inex2[(Pop_2013_2019_by_REG2_inex2$inexpliquee) > 0]$indinex = 2
+Pop_2013_2019_by_REG2_inex2[(Pop_2013_2019_by_REG2_inex2$inexpliquee) < 0]$indinex = -2
+
+Pop_2013_2019_by_REG2_inex2$indinex = as.numeric(Pop_2013_2019_by_REG2_inex2$indinex)
+Pop_2013_2019_by_REG2_inex2$indfiinex= Pop_2013_2019_by_REG2_inex2$indinex + Pop_2013_2019_by_REG2_inex2$indemp 
+
+
+cp_reg2_data= cp_reg2@data
+cp_reg2_data$INSEE_REG = as.numeric(cp_reg2_data$INSEE_REG)
+cp_reg2_data_inex2= cp_reg2_data %>%
+  left_join(. ,Pop_2013_2019_by_REG2_inex2 , by=c("INSEE_REG"="Group.1"))
+
+
+cp_reg2@data<-setDT(cp_reg2_data_inex2)
+
+pal4 <- colorFactor(c("red", "orange", "blue", "green"), domain = c("-3", "1", "-1", "3"))
+
+
+ccl2=leaflet(data =spTransform(cp_reg2, CRS("+proj=longlat +datum=WGS84"))) %>%
+  addTiles()%>%
+  addPolygons( 
+   fillColor = ~pal4(cp_reg2@data$indfiinex),
+  weight = 1,
+   opacity = 1,
+  color = "white",
+  
+  fillOpacity = 0.7,
+  stroke = TRUE)%>%
+  addLegend( colors=c("red", "orange",  "green"), title = "Similitude variation inexpliquée et nombre d'emplois ",  labels=c("Inexpliquée : Négative, Emploi : Augmentation","Inexpliquée : Négative, Emploi : Diminution",  "Inexpliquée : Positive, Emploi : Augmentation") )
+```
+
+
+
+```{r, include= FALSE}
+df$Imposition=""
+df[(df$PIMP19)>=50]$Imposition="Supérieur à 50%"
+df[(df$PIMP19)<50]$Imposition="Inférieur à 50%"
+
+proportion_test <- 0.3
+indices_test <- sample(1:nrow(df), nrow(df) * proportion_test)
+
+# Train-Test
+donnees_train <- df[-indices_test, ]
+donnees_test <- df[indices_test, ]
+
+formula=as.formula(Seuil_Niveau_vie ~ Imposition  + Seuil_Chomage + P19_POP)
+fit.rt <- rpart(formula, donnees_train)
+plot_ml=rpart.plot(fit.rt,box.palette = "PuRd")
+
+plotcp(fit.rt)
+
+print(fit.rt$cptable[which.min(fit.rt$cptable[,4]),1])
+
+fit.rt_opt <- prune(fit.rt,cp=fit.rt$cptable[which.min(fit.rt$cptable[,4]),1])
+rpart.plot(fit.rt_opt,box.palette = "PuRd")
+prediction_fit.rt <- predict(fit.rt_opt, newdata = donnees_test, type="class")
+
+
+pred.probs=predict(fit.rt_opt,newdata=donnees_test,type="prob")[,1]
+
+df_ML=data.frame(
+  Nom=c("", "Inférieur","Supérieur"),
+  Age=c("Inférieur", 4409, 2075),
+  Salaire=c("Supérieur", 909, 1998)
+)
+
+
+kable(df_ML, col.names = NULL) %>%
+  kable_styling()
+
+out.roc <- roc(donnees_test$Seuil_Niveau_vie, pred.probs)
+out.auc <- auc(out.roc)
+#ci.auc(out.roc)
+roc.df <- data.frame(
+  tpp = out.roc$sensitivities*100,       ## tpp (true positive percentage)
+  fpp = (1 - out.roc$specificities)*100, ## fpp = 1-tnp (false positive percentage)
+  cutoffs = out.roc$thresholds,
+  auc = as.numeric(out.roc$auc)
+)
+
+roc.df1 <- roc.df[ order(roc.df$fpp, roc.df$tpp), ]
+
+ courbeROC=ggplot(data = roc.df1, aes(x = fpp/100, y = tpp/100)) + 
+  geom_abline(intercept = 0, slope = 1, col = "gray5", 
+              linetype = "dashed", size = 1) +
+  geom_line(size = 1, col = "red") +
+  theme_bw() +
+  xlab("Specificity") + 
+  ylab("Sensitivity") +
+  ggtitle("Courbe ROC - AUC = 0,73 sur le jeu test") +
+  scale_x_continuous(breaks = seq(0, 1, .1), labels = 1-seq(0, 1, .1)) +
+  scale_y_continuous(breaks = seq(0, 1, .1)) +
+  annotate(geom = "text", x = .77, y = .08, label = paste("AUC =", round(out.auc, 2)), size = 4.6) +
+  theme(
+    axis.text = element_text(size = 12, color = "gray5"),
+    axis.title = element_text(size = 12)
+  )
+
+```
+
+```{r,include=FALSE}
+Taux_Chomage_France= 8.7/100
+Niveau_Vie_Median_France= 22040
+
+df$Seuil_Chomage=""
+df[(df$P19_CHOMEUR1564/df$P19_POP1564)>=Taux_Chomage_France]$Seuil_Chomage="Supérieur"
+df[(df$P19_CHOMEUR1564/df$P19_POP1564)<Taux_Chomage_France]$Seuil_Chomage="Inférieur"
+
+df$Seuil_Niveau_vie=""
+df[(df$MED19)>=Niveau_Vie_Median_France]$Seuil_Niveau_vie="Supérieur"
+df[(df$MED19)<Niveau_Vie_Median_France]$Seuil_Niveau_vie="Inférieur"
+
+
+df_sb2=df[1:31257,c("Seuil_Niveau_vie","Gd_region","P19_POP")]
+
+result = dcast(df_sb2, Gd_region ~ Seuil_Niveau_vie, value.var="P19_POP", fun.aggregate=sum)
+
+TNiveau_TChomage =nrow(df[(Seuil_Niveau_vie=="Supérieur")&(Seuil_Chomage=="Supérieur")])
+
+TNiveau_FChomage =nrow(df[(Seuil_Niveau_vie=="Supérieur")&(Seuil_Chomage=="Inférieur")])
+
+FNiveau_TChomage =nrow(df[(Seuil_Niveau_vie=="Inférieur")&(Seuil_Chomage=="Supérieur")])
+
+FNiveau_FChomage =nrow(df[(Seuil_Niveau_vie=="Inférieur")&(Seuil_Chomage=="Inférieur")])
+
+Niveauvie_sup=nrow(df[(Seuil_Niveau_vie=="Supérieur")])
+Niveauvie_inf=nrow(df[(Seuil_Niveau_vie=="Inférieur")])
+
+data <- data.frame(
+  labels = c("Niveau de vie supérieur à la moyenne Française", "Taux de chomage supérieur à la moyenne Française", "Taux de chomage inférieur à la moyenne Française", "Niveau de vie inférieur à la moyenne Française", "Taux de chomage inf à la moyenne Française", "Taux de chomage sup à la moyenne Française"),
+  values = c(Niveauvie_sup, TNiveau_TChomage, TNiveau_FChomage, Niveauvie_inf, FNiveau_FChomage, FNiveau_TChomage),
+  parent = c("", "Niveau de vie supérieur à la moyenne Française", "Niveau de vie supérieur à la moyenne Française", "", "Niveau de vie inférieur à la moyenne Française", "Niveau de vie inférieur à la moyenne Française")
+)
+
+color_palette <- brewer.pal(9, "OrRd")
+
+
+fig <- plot_ly(
+  type = "sunburst",
+  labels = data$labels,
+  parents = data$parent,
+  values = data$values,
+  branchvalues = "total",
+  insidetextorientation = "radial", 
+  marker = list(colors = color_palette),
+  textinfo = "none" ,
+  
+)
+```
+
+
+
+```{r}
+ui <- navbarPage("",
+
+   tabPanel("Introduction", HTML("Dans notre base de données, nous disposons de 36 indicateurs qui couvrent   diverses années et qui décrivent la population, les naissances, les décès, les revenus, ainsi que le taux de chômage pour certaines communes françaises. <br> <br> 
+
+Au cours de notre étude, notre attention s'est particulièrement portée sur les tendances d'évolution de la population, sa répartition géographique, ainsi que sur les aspects liés à l'emploi. <br> <br> 
+
+La source des données est : <a href='https://www.insee.fr/fr/statistiques/2521169' target='_blank'>https://www.insee.fr/fr/statistiques/2521169</a> <br>  <br> 
+
+<br>Quels écarts existent en termes de population et d'opportunités d'emploi au sein de la France métropolitaine ?</b>")
+    ),
+
+tabPanel("Graphiques en cascade",
+    fluidRow(
+      column(6, selectInput("choixGraphique", "Choississez la région que vous souhaitez afficher :", choices = names(liste_de_graphiques)), plotlyOutput("monGraphique"),  textOutput("texteDynamique")),
+      column(6,  leafletOutput("carteReg"))
+    )
+  ),
+
+tabPanel("Sunburst",plotlyOutput("sunburst"), HTML("<br> <br> Ce diagramme Sunburst permet de visualiser les pourcentages relatifs de diverses combinaisons potentielles. Plus précisément, nous avons choisi de croiser les données relatives au niveau de vie et au taux de chômage en France. <br> <br>
+
+Nous constatons que : <br>
+-	57.10% des villes française ont un niveau de vie inférieur à la moyenne française <br>
+-	29% des villes ont un niveau de vie inférieur et un taux de chômage supérieur aux moyennes françaises <br>
+-	6.30% des villes ont un niveau de vie supérieur et un taux de chômage supérieur aux moyennes françaises <br> <br>
+
+Ce Sunburst montre que le taux de chômage peut dépendre du niveau de vie. 
+")),
+
+  
+tabPanel("Niveau de vie moyen par région",
+  leafletOutput("maCarte"), HTML("<br> <br> Cette carte représente le niveau de vie par région de France. 
+  La région d'Île-de-France présente le niveau de vie le plus élevé, atteignant 26 242.80€, ce qui s'explique logiquement par la présence de la capitale, Paris, dans cette région.
+  En revanche, les régions de l'ouest affichent les niveaux de vie les plus bas, en grande partie en raison d'un taux de chômage plus élevé et d'un coût de la vie supérieur, ce qui contribue à ces disparités.")
+  ),
+
+tabPanel("Variation de la population", selectInput("choixGrain", "Choississez quelle granularité afficher :", choices = names(liste_grain)),leafletOutput("variationPop"),textOutput("texteVar")),
+
+  tabPanel("Employabilité",
+    fluidRow(
+      column(6, plotlyOutput("chomeur"), HTML("Ce diagramme circulaire nous montre que 88.20% de la population est active et 11.80% est au chômage.")),
+          column(6, plotlyOutput("chomeur_par_reg"),HTML("Nous notons que les régions qui ont enregistré une croissance de leur population, à savoir l'Île-de-France, l'Auvergne-Rhône-Alpes, la Nouvelle-Aquitaine et l'Occitanie, ont également connu une augmentation du nombre d'emplois. Cependant, il est complexe de déterminer si l'une de ces variables influe directement sur l'autre. Néanmoins, on peut supposer que la plupart des individus cherchent d'abord un emploi avant de décider de changer de région. ."))
+    )
+  ),
+
+
+tabPanel("Machine Learning",
+    fluidRow( 
+      column(6,HTML("Dans cette section, nous allons nous pencher sur l'étude de niveau de vie en France dans chaque commune par rapport au niveau de vie moyen français. Pour cela, nous allons utiliser un arbre de régression pour essayer d'expliquer ce phénomène. <br> <br> Nous choississons les variables : <br> - Niveau d'imposition dans la commune <br> - Niveau de chômage <br> - Population en 2019. <br> <br> <br>"), HTML("Nous commençons par fitter le modèle sur la variable cible sur le jeu de données train. Nous obtenons l'arbre de régréssion suivant : <br> <br> <br>"), plotOutput("rpart")),
+          column(6, HTML(" A l'aide du modèle, nous prédisons les valeurs de la variable cible pour les données test.Lorsque l'on crée un modèle, il est primordial de s'assurer de son bon fonctionnement. Pour cela, nous affichons une table récapitulant les résultats du modèle : <br> <br>"), tableOutput("mytable"), HTML("Nous remarquons que le modèle prédit correctement les valeurs du jeu de données train. <br> <br> Affichons à présent une courbe ROC pour s'assurer de cela : <br> <br> "),plotOutput("ROC"), HTML("Nous obtenons un AUC=0.73 ce qui indique que le modèle prédit mieux qu'un pile ou face"))
+    )
+  ),
+
+tabPanel("Pour récapituler",
+    fluidRow(
+      column(6,leafletOutput("ccl1"),HTML("<br> <br> Cette carte représente les similitudes entre la variation de la population et le nombre d’emplois. Les régions sont colorées en vert lorsque les variations de leur population et de leur nombre d'emplois sont congruentes, c'est-à-dire que soit la population et le nombre d'emplois augmentent, soit ces deux variables diminuent.<br> <br> 
+En revanche, les régions sont marquées en rouge lorsque la variation de ces deux variables ne concorde pas, c'est-à-dire qu'elles ne vont pas dans la même direction.<br> <br>
+
+La majorité des régions sont colorées en vert. Néanmoins, il y a trois régions marquées en rouge, à savoir le Centre-Val-de-Loire, le Grand Est et les Hauts-de-France. Dans ces régions, la variation de la population ne peut pas être expliquée par le nombre d'emplois.<br> <br>
+")),
+          column(6, leafletOutput("ccl2"),HTML("<br> <br> Cette carte, utilisant trois couleurs distinctes, offre une meilleure lisibilité des différents scénarios. Nous nous concentrons sur la part de variation inexpliquée ainsi que sur les variations du nombre d'emplois. <br> <br>
+
+Les régions colorées en orange et en vert présentent des variations en matière d'emplois et de part inexpliquée qui se ressemblent. 
+Par exemple, la région PACA, les Pays de la Loire et l'Occitanie, en verts, ont constaté une augmentation de leur population due à l'arrivée de nouveaux habitants, qu'ils proviennent d'autres régions ou de l'étranger. De plus, le nombre d'emplois dans ces régions a également augmenté. Ce phénomène pourrait s'expliquer en partie par leur situation géographique en bordure du littoral, ce qui les rend plus attractives. <br> <br>
+
+Les régions en orange, telles que la Normandie et la Grand Est, ont connu le départ d'habitants résidents en 2013 qui sont partis avant 2019. En outre, le nombre d'emplois dans ces régions a diminué. <br> <br>
+
+L'Île-de-France est la seule région à apparaître en rouge. En effet, elle a vu une augmentation du nombre d'emplois malgré des départs de résidents. Cette situation peut s'expliquer par le choix de plus en plus fréquent des personnes de quitter volontairement l'Île-de-France tout en maintenant leur emploi, afin de bénéficier d'un cadre de vie plus agréable et moins onéreux.
+"))
+    )
+  ),
+
+
+
+tabPanel("Conclusion", HTML("Ce projet nous a donné l'opportunité d'explorer la problématique suivante : Quels écarts existent en termes de population et d'opportunités d'emploi au sein de la France métropolitaine ? <br> <br>
+
+En ce qui concerne la démographie, il est notable que la segmentation par Région s'avère la plus pertinente. En effet, une croissance générale de la population est observée entre 2013 et 2019 sur l'ensemble du territoire français métropolitain. De manière particulière, les régions du Sud telles que la Corse, Occitanie et Provence-Alpes-Côte-d'Azur ont manifesté une attractivité accrue, probablement attribuable à leur climat et à leur littoral. Cette supposition trouve confirmation dans les graphiques en cascade, révélant une part positive inexpliquée. <br> <br>
+
+En ce qui concerne l'employabilité, de manière similaire, une augmentation générale du nombre d'emplois en France est observée, en corrélation avec la croissance démographique. Toutefois, cette constatation ne nous permet pas de tirer des conclusions définitives sur cette facette. C'est pourquoi nous avons inclus le niveau de vie dans notre étude. Il ressort en effet que les départements affichant le meilleur niveau de vie sont également les plus peuplés et présentent une forte employabilité. <br> <br>
+
+Pour approfondir notre analyse, nous avons souhaité croiser ces variables en élaborant deux cartes synthétiques. La première permet d'identifier si les variations de population et d'emploi au sein d'une même région vont dans la même direction. Seules trois régions se démarquent en présentant des variations opposées. En effet, elles enregistrent une diminution du nombre d'emplois en raison d'une population vieillissante. Il serait donc intéressant d'explorer davantage cette problématique, notamment en examinant la part inexpliquée.
+C'est ce que nous avons souhaité mettre en évidence avec la seconde carte, nous permettant d'extraire trois constats : <br>
+-	Le Sud est plus attractif, <br>
+-	L'Île-de-France demeure incontestablement un pôle d'activité, car même si la part de variation inexpliquée est négative, le nombre d'emplois augmente, <br>
+-	Une migration des populations d'Île-de-France, probablement vers des régions telles que la Bretagne et la Normandie. <br> <br>
+
+En fin de compte, ce projet nous a permis d'approfondir notre compréhension de la démographie et de l'employabilité entre 2013 et 2019 sur le territoire français métropolitain. <br> <br>
+
+Cependant, il est essentiel de souligner les limites de notre étude. Tout d'abord, notre focus se restreint à la période de 2013 à 2019, négligeant ainsi plusieurs événements ultérieurs tels que la crise sanitaire de la COVID-19. Il serait donc intéressant d'analyser l'impact de cette épidémie sur la démographie et l'employabilité en France. Apparemment, cet événement a accentué la migration des Parisiens vers les régions de Normandie et de Bretagne. <br> <br>
+
+Par ailleurs, le contexte actuel d’inflation peut également générer un impact sur la démographie et l’employabilité en France où la population pourrait déménager dans des régions moins onéreuses. De plus, une amélioration pourrait être envisagée en croisant diverses sources de données afin de renforcer la fiabilité de notre étude.
+"))
+)
+
+server <- function(input, output, session) {
+    output$texteDynamique <- renderText({
+    nom_texte <- input$choixGraphique
+    texte <- liste_de_texte[[nom_texte]]
+    return(texte)
+  })
+  
+    output$monGraphique <- renderPlotly({
+    nom_graphique <- input$choixGraphique
+    graphique <- liste_de_graphiques[[nom_graphique]]
+    return(graphique)
+  })
+  
+    output$carteReg <- renderLeaflet({
+    nom_reg <- input$choixGraphique
+    reg <- liste_de_regions[[nom_reg]]
+    return(reg)
+  })
+  
+  output$maCarte <- renderLeaflet({
+    niv_moyen_rég
+  })
+  
+  output$chomeur <- renderPlotly({
+    graphique1
+  })
+  
+  output$sunburst <- renderPlotly({
+    fig
+  })
+  
+  
+  output$chomeur_par_reg <- renderPlotly({
+    g_classement_nbemploi_by_REG_by_annee
+  })
+  
+  output$variationPop <- renderLeaflet({
+    nom_granularité <- input$choixGrain
+    grain <- liste_grain[[nom_granularité]]
+    return(grain)
+  })
+  
+  output$texteVar <- renderText({
+    nom_texte_grain <- input$choixGrain
+    texte_grain <- liste_de_texte_grain[[nom_texte_grain]]
+    return(texte_grain)
+  })
+  
+  output$ccl1 <- renderLeaflet({
+    ccl1
+    
+  })
+  
+  output$ccl2 <- renderLeaflet({
+    ccl2
+  })
+  
+  output$rpart <- renderPlot({
+    rpart.plot(fit.rt_opt,box.palette = "PuRd")
+  })
+  
+   output$ROC <- renderPlot({
+    courbeROC
+  })
+   
+    create_kable <- function() {
+    kable(df_ML, col.names = NULL) %>%
+      kable_styling()
+  }
+
+ output$mytable <- renderUI({
+    HTML(create_kable())
+  })
+  
+  
+ 
+}
+
+shinyApp(ui, server)
+
+
+
+```
